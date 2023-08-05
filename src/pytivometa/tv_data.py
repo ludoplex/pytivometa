@@ -35,10 +35,9 @@ LOGGER.addHandler(logging.NullHandler())
 def find_series_by_year(series, year):
     matching_series = []
     for series_candidate in series:
-        first_aired = series_candidate["firstAired"]
-        if first_aired:
+        if first_aired := series_candidate["firstAired"]:
             match = re.search(r"(\d\d\d\d)-\d\d-\d\d", first_aired)
-            if match and year == match.group(1):
+            if match and year == match[1]:
                 matching_series.append(series_candidate)
     # Return all that matched the year (which may be an empty list)
     return matching_series
@@ -49,10 +48,10 @@ def get_series_file_info(show_name, show_dir, meta_dir):
 
     # prefer .pytivometa files but fall back to reading .seriesID
     series_id_files = [
-        os.path.join(meta_dir, show_name + ".pytivometa"),
-        os.path.join(show_dir, show_name + ".pytivometa"),
-        os.path.join(meta_dir, show_name + ".seriesID"),
-        os.path.join(show_dir, show_name + ".seriesID"),
+        os.path.join(meta_dir, f"{show_name}.pytivometa"),
+        os.path.join(show_dir, f"{show_name}.pytivometa"),
+        os.path.join(meta_dir, f"{show_name}.seriesID"),
+        os.path.join(show_dir, f"{show_name}.seriesID"),
     ]
     series_id_files = list(set(series_id_files))
 
@@ -172,9 +171,7 @@ def format_episode_data(ep_data, meta_filepath):
             LOGGER.debug("3,%s : %s", pytivo_tag, text)
 
             if pytivo_tag == "originalAirDate":
-                text = datetime(*strptime(text, "%Y-%m-%d")[0:6]).strftime(
-                    "%Y-%m-%dT%H:%M:%SZ"
-                )
+                text = datetime(*strptime(text, "%Y-%m-%d")[:6]).strftime("%Y-%m-%dT%H:%M:%SZ")
 
             # Only check to see if Season is > 0, allow EpNum to be 0 for
             #   things like "1x00 - Bonus content"
@@ -224,7 +221,7 @@ def write_series_file_info(series_file_info, filepath):
     pytivometa.common.mkdir_if_needed(os.path.dirname(filepath))
     with open(filepath, "w") as series_id_fh:
         for key in series_file_info:
-            print(key + ":" + str(series_file_info[key]), file=series_id_fh)
+            print(f"{key}:{str(series_file_info[key])}", file=series_id_fh)
 
 
 class TvData:
@@ -255,11 +252,9 @@ class TvData:
         self.series_info_cache = {}
 
     def search_tvdb_series_id(self, show_name):
-        # See if there's a year in the name
-        match = re.search(r"(.+?) *\(((?:19|20)\d\d)\)", show_name)
-        if match:
-            bare_title = match.group(1)
-            year = match.group(2)
+        if match := re.search(r"(.+?) *\(((?:19|20)\d\d)\)", show_name):
+            bare_title = match[1]
+            year = match[2]
         else:
             bare_title = show_name
             year = ""
@@ -288,13 +283,11 @@ class TvData:
             for series_candidate in series:
                 series_name = series_candidate["seriesName"]
                 series_overview = series_candidate["overview"]
-                first_aired = series_candidate["firstAired"]
-
                 text_option = "Series Name: %s\n" % series_name
-                if first_aired:
+                if first_aired := series_candidate["firstAired"]:
                     text_option += "1st Aired: %s\n" % first_aired
                 if series_overview is not None:
-                    overview_text = " ".join(series_overview[0:239].split())
+                    overview_text = " ".join(series_overview[:239].split())
                     text_option += "Overview: %s\n" % overview_text
                 text_option += "-" * 30
                 options_text.append(text_option)
@@ -349,10 +342,7 @@ class TvData:
                     rpc_cast = [
                         x["fullName"] for x in series["credit"] if x["role"] == "actor"
                     ]
-                    actor_match = 0
-                    for actor in actors:
-                        if actor in rpc_cast:
-                            actor_match += 1
+                    actor_match = sum(1 for actor in actors if actor in rpc_cast)
                     series_actor_match.append(actor_match)
                     LOGGER.debug("2," + " " * 4 + "actor match: " + str(actor_match))
                 else:
@@ -410,11 +400,6 @@ class TvData:
                     actors=series_info["tvdb"].get("actors", None),
                 )
                 series_file_info["rpc_series_id"] = rpc_series_id
-            else:
-                # TODO: fxn to ask user about multiple matching rpc series
-                #   in case of no tvdb series
-                pass
-
             if rpc_series_id:
                 LOGGER.debug("rpc_series_id: %s", rpc_series_id)
                 series_info["rpc"] = self.rpc_remote.get_series_info(rpc_series_id)
@@ -425,7 +410,7 @@ class TvData:
         if have_more_info or self.clobber:
             # write out series info file
             write_series_file_info(
-                series_file_info, os.path.join(meta_dir, show_name + ".pytivometa")
+                series_file_info, os.path.join(meta_dir, f"{show_name}.pytivometa")
             )
 
         return series_info
@@ -482,7 +467,7 @@ class TvData:
         # pp.pprint(series_info)
 
         if series_info.get("tvdb", {}).get("id", None):
-            episode_info.update(series_info["tvdb"])
+            episode_info |= series_info["tvdb"]
 
             episode_info.update(
                 self.tvdb_access.get_episode_info(

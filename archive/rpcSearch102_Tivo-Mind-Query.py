@@ -20,26 +20,27 @@ session_id = random.randrange(0x26c000, 0x27dc20)
 def RpcRequest(type, monitor=False, **kwargs):
     global rpc_id
     rpc_id += 1
-    if 'bodyId' in kwargs:
-        body_id = kwargs['bodyId']
-    else:
-        body_id = ''
-
-    headers = '\r\n'.join((
-            'Type: request',
-            'RpcId: %d' % rpc_id,
-            'SchemaVersion: 14',
-            'Content-Type: application/json',
-            'RequestType: %s' % type,
-            'ResponseCount: %s' % (monitor and 'multiple' or 'single'),
-            'BodyId: %s' % body_id,
-            'X-ApplicationName: Quicksilver',
-            'X-ApplicationVersion: 1.2',
-            'X-ApplicationSessionId: 0x%x' % session_id,
-            )) + '\r\n'
+    body_id = kwargs.get('bodyId', '')
+    headers = (
+        '\r\n'.join(
+            (
+                'Type: request',
+                'RpcId: %d' % rpc_id,
+                'SchemaVersion: 14',
+                'Content-Type: application/json',
+                f'RequestType: {type}',
+                f"ResponseCount: {monitor and 'multiple' or 'single'}",
+                f'BodyId: {body_id}',
+                'X-ApplicationName: Quicksilver',
+                'X-ApplicationVersion: 1.2',
+                'X-ApplicationSessionId: 0x%x' % session_id,
+            )
+        )
+        + '\r\n'
+    )
 
     req_obj = dict(**kwargs)
-    req_obj.update({'type': type})
+    req_obj['type'] = type
 
     body = json.dumps(req_obj) + '\n'
 
@@ -74,11 +75,10 @@ class Remote(object):
 
         while True:
             self.buf += self.ssl_socket.read(16)
-            match = re.match(r'MRPC/2 (\d+) (\d+)\r\n', self.buf)
-            if match:
-                start_line = match.group(0)
-                head_len = int(match.group(1))
-                body_len = int(match.group(2))
+            if match := re.match(r'MRPC/2 (\d+) (\d+)\r\n', self.buf):
+                start_line = match[0]
+                head_len = int(match[1])
+                body_len = int(match[2])
                 break
 
         need_len = len(start_line) + head_len + body_len
@@ -122,8 +122,7 @@ class Remote(object):
               collectionType='series'
         )
         self.Write(req)
-        result = self.Read()
-        return result
+        return self.Read()
 
     def offerSearchLinear(self, title, subtitle):
         req = RpcRequest('offerSearch',
@@ -133,8 +132,7 @@ class Remote(object):
               subtitle=subtitle
         )
         self.Write(req)
-        result = self.Read()
-        return result
+        return self.Read()
 
     def offerSearchLinearPlus(self, title):
         req = RpcRequest('offerSearch',
@@ -143,8 +141,7 @@ class Remote(object):
               title=title
         )
         self.Write(req)
-        result = self.Read()
-        return result
+        return self.Read()
 
     def OfferSearchEpisodes(self, offset, collectionId):
         req = RpcRequest('contentSearch',
@@ -156,8 +153,7 @@ class Remote(object):
             collectionId=collectionId
         )
         self.Write(req)
-        result = self.Read()
-        return result
+        return self.Read()
 
     def SearchEpisodes(self, count, max, keywords):
         #matched = 0
@@ -176,9 +172,9 @@ class Remote(object):
                     ok = True
                     if c.get('descriptionLanguage') and c.get('title'):
                         #print 'lang = ' +c.get('descriptionLanguage') + ', title = ' + c.get('title')
-                        if not c.get('descriptionLanguage') == 'English':
+                        if c.get('descriptionLanguage') != 'English':
                             ok = False
-                        elif not c.get('title').lower() == keywords.lower():
+                        elif c.get('title').lower() != keywords.lower():
                             ok = False
                     else:
                         ok = False
@@ -191,8 +187,7 @@ class Remote(object):
                     while not stop:
                         matched += 1
                         result = remote.OfferSearchEpisodes(offset, c.get('collectionId'))
-                        all = result.get('content')
-                        if all:
+                        if all := result.get('content'):
                             for ep in all:
                                 #print json.dumps(ep)
                                 #print '==================================================='
@@ -221,8 +216,7 @@ class Remote(object):
               filterUnavailable='false'
         )
         self.Write(req)
-        result = self.Read()
-        return result
+        return self.Read()
 
     def offerSearch(self, offset, id):
         req = RpcRequest('offerSearch',
@@ -233,29 +227,26 @@ class Remote(object):
               collectionId=id
         )
         self.Write(req)
-        result = self.Read()
-        return result
+        return self.Read()
 
     def Search(self, count, max, keywords):
-        matched = 0
         #result = remote.collectionSearch(count, 'as good as it gets')
         result = remote.collectionSearch(count, keywords)
-        collection = result.get('collection')
-        if collection:
+        if collection := result.get('collection'):
+            matched = 0
             for c in collection:
                 if c.get('collectionId'):
                     stop = False
                     offset = 0
                     while not stop:
                         result = remote.offerSearch(offset, c.get('collectionId'))
-                        offers = result.get('offer')
-                        if offers:
+                        if offers := result.get('offer'):
                             for offer in offers:
                                 if not stop:
                                     matched += 1
                                     #print json.dumps(offer, indent=4) + '\r\n-------------\r\n'
                                     #print '{"offeritem": ' + json.dumps(offer) + '},'
-                                    print(json.dumps(offer) + ',')
+                                    print(f'{json.dumps(offer)},')
                                 if matched > max:
                                     stop = True
                         else:
@@ -264,8 +255,7 @@ class Remote(object):
     def seasonEpisodeSearch(self, title, season, ep):
         count = 25
         collections = remote.collectionSearchSeries(count, title)
-        collection = collections.get('collection')
-        if collection:
+        if collection := collections.get('collection'):
             for c in collection:
                 if c.get('collectionId'):
                     id = c.get('collectionId')
@@ -280,8 +270,7 @@ class Remote(object):
                     )
                     self.Write(req)
                     result = self.Read()
-                    content = result.get('content')
-                    if content:
+                    if content := result.get('content'):
                         print(content[0].get('partnerCollectionId') + '%' + content[0].get('partnerContentId') + '^')
                     #if result.get('content').get('partnerCollectionId') == 'epgProvider:cl.SH016916':
                         #print json.dumps(result)
@@ -292,8 +281,7 @@ class Remote(object):
         count = 25
         stop = False
         collections = remote.collectionSearchSeries(count, title)
-        collection = collections.get('collection')
-        if collection:
+        if collection := collections.get('collection'):
             for c in collection:
                 if stop == True:
                     return
@@ -312,10 +300,15 @@ class Remote(object):
                         )
                         self.Write(req)
                         result = self.Read()
-                        content = result.get('content')
-                        if content:
+                        if content := result.get('content'):
                             stop = True
-                            print(ep + '%' + content[0].get('partnerCollectionId') + '%' + content[0].get('partnerContentId') + '^')
+                            print(
+                                f'{ep}%'
+                                + content[0].get('partnerCollectionId')
+                                + '%'
+                                + content[0].get('partnerContentId')
+                                + '^'
+                            )
 
 if __name__ == '__main__':
     try:
@@ -326,25 +319,21 @@ if __name__ == '__main__':
         subtitle = sys.argv[6]
         #print 'credentials = ' + username + ' (and) ' + password
         remote = Remote(username, password)
-        if searchType == 'streaming':
-            remote.SearchEpisodes(25, 100, title) # test 100 was 25
-        elif searchType == 'linear':
-            body_id = 'tsn:' + sys.argv[4]
+        if searchType == 'linear':
+            body_id = f'tsn:{sys.argv[4]}'
             result = remote.offerSearchLinear(title, subtitle)
-            offers = result.get('offer')
-            if offers:
+            if offers := result.get('offer'):
                 for offer in offers:
                     pid = str(offer.get('partnerContentId'))
                     cl = str(offer.get('partnerCollectionId'))
-                    print(cl + '%' + pid + '^')
+                    print(f'{cl}%{pid}^')
                     break
             else:
                 print('error: no results')
         elif searchType == 'linearplus':
-            body_id = 'tsn:' + sys.argv[4]
+            body_id = f'tsn:{sys.argv[4]}'
             result = remote.offerSearchLinearPlus(title)
-            offers = result.get('offer')
-            if offers:
+            if offers := result.get('offer'):
                 for offer in offers:
                     pid = str(offer.get('partnerContentId'))
                     cl = str(offer.get('partnerCollectionId'))
@@ -354,26 +343,27 @@ if __name__ == '__main__':
                     s = str(offer.get('seasonNumber'))
                     if offer.get('episodeNum'):
                         e = str(offer.get('episodeNum'))
-                        print('S' + s + 'E' + e + ':' + pid + ' subTitle: ' + st + '^')
-                    #break
+                        print(f'S{s}E{e}:{pid} subTitle: {st}^')
+                                    #break
             else:
                 print('error: no results')
         elif searchType == 'movie':
+            print('{ "movieoffer":  [')
             count = 25
             max = 10
-            print('{ "movieoffer":  [')
             remote.Search(count, max, sys.argv[1])
             print('] }')
-        elif searchType == 'seasonep':
-            season = sys.argv[6]
-            ep = sys.argv[7]
-            remote.seasonEpisodeSearch(title, season, ep)
-            #print json.dumps(remote.seasonEpisodeSearch(title, season, ep))
         elif searchType == 'season':
             season = sys.argv[6]
             maxEp = sys.argv[7]
             remote.searchOneSeason(title, season, maxEp)
+        elif searchType == 'seasonep':
+            season = sys.argv[6]
+            ep = sys.argv[7]
+            remote.seasonEpisodeSearch(title, season, ep)
+        elif searchType == 'streaming':
+            remote.SearchEpisodes(25, 100, title) # test 100 was 25
         else:
-            print('error: invalid search type: ' + searchType)
+            print(f'error: invalid search type: {searchType}')
     except:
         print('ErrorError')

@@ -65,6 +65,7 @@ or "s01e02", etc.)  Also, an air-date will allow an episode to be found.
     friends.2004.4.29.m4v
 """
 
+
 import argparse
 import getpass
 import logging
@@ -88,8 +89,8 @@ if sys.platform == "win32":
     )
 else:
     CONFIG_DIR = os.path.expanduser("~/.config/pytivometa")
-CONFIG_FILE_PATH = CONFIG_DIR + "/config"
-LOG_FILE_PATH = CONFIG_DIR + "/log.txt"
+CONFIG_FILE_PATH = f"{CONFIG_DIR}/config"
+LOG_FILE_PATH = f"{CONFIG_DIR}/log.txt"
 NUM_LOGFILE_HIST = 5
 
 # When using a subdir for metadata files, what should it be called
@@ -157,11 +158,7 @@ def logging_setup(debug_level=False):
     # c_handler.setFormatter(formatter)
 
     # set global log level to either INFO or DEBUG depending on config
-    if debug_level:
-        global_log_level = logging.DEBUG
-    else:
-        global_log_level = logging.INFO
-
+    global_log_level = logging.DEBUG if debug_level else logging.INFO
     # config all loggers
     for logger_name in LOGGED_MODULES:
         logging.getLogger(logger_name).setLevel(global_log_level)
@@ -265,24 +262,23 @@ def create_genre_dir(genre_dir):
             "aren't well supported."
         )
         genre_dir = None
+    elif not os.path.exists(genre_dir):
+        os.makedirs(genre_dir, 0o755)
+    elif not os.path.isdir(genre_dir):
+        raise OSError(
+            "Can't create \""
+            + genre_dir
+            + '" as a dir, a '
+            + "file already exists with that name."
+        )
     else:
-        if not os.path.exists(genre_dir):
-            os.makedirs(genre_dir, 0o755)
-        elif not os.path.isdir(genre_dir):
-            raise OSError(
-                "Can't create \""
-                + genre_dir
-                + '" as a dir, a '
-                + "file already exists with that name."
-            )
-        else:
-            print(
-                "Note: If you've removed videos, there may be old "
-                "symlinks in '" + genre_dir + "'.  If there's "
-                "nothing else in there, you can just remove the "
-                "whole thing first, then run this again (e.g. "
-                "rm -rf '" + genre_dir + "'), but be careful."
-            )
+        print(
+            "Note: If you've removed videos, there may be old "
+            "symlinks in '" + genre_dir + "'.  If there's "
+            "nothing else in there, you can just remove the "
+            "whole thing first, then run this again (e.g. "
+            "rm -rf '" + genre_dir + "'), but be careful."
+        )
     return genre_dir
 
 
@@ -303,25 +299,21 @@ def process_dir(
         meta_dir = dir_proc
 
     for filename in video_files:
-        meta_filepath = os.path.join(meta_dir, filename + ".txt")
+        meta_filepath = os.path.join(meta_dir, f"{filename}.txt")
 
         LOGGER.debug("\n--->working on: %s", filename)
         LOGGER.debug("2,Metafile is: %s", meta_filepath)
 
         if os.path.exists(meta_filepath) and not clobber:
             LOGGER.debug("Metadata file already exists, skipping.")
+        elif tv_info := tvinfo_from_filename(filename):
+            # assume tv if filename matches tv format
+            tv_data_acc.parse_tv(tv_info, meta_filepath, dir_proc)
         else:
-            # get info in dict if filename looks like tv episode, {} otherwise
-            tv_info = tvinfo_from_filename(filename)
-
-            if tv_info:
-                # assume tv if filename matches tv format
-                tv_data_acc.parse_tv(tv_info, meta_filepath, dir_proc)
-            else:
-                # assume movie if filename not matching tv
-                movie_data_acc.parse_movie(
-                    dir_proc, filename, meta_filepath, is_trailer=is_trailer
-                )
+            # assume movie if filename not matching tv
+            movie_data_acc.parse_movie(
+                dir_proc, filename, meta_filepath, is_trailer=is_trailer
+            )
 
 
 def process_command_line(argv):
@@ -359,9 +351,7 @@ def process_command_line(argv):
         "-c",
         "--createconfig",
         action="store_true",
-        help="Create config file: "
-        + CONFIG_FILE_PATH
-        + " with default settings and immediately exit.",
+        help=f"Create config file: {CONFIG_FILE_PATH} with default settings and immediately exit.",
     )
     parser.add_argument(
         "-d",
@@ -404,9 +394,7 @@ def process_command_line(argv):
         "before giving up. (Default: 5s)",
     )
 
-    args = parser.parse_args(argv)
-
-    return args
+    return parser.parse_args(argv)
 
 
 def get_config_file():
@@ -442,7 +430,7 @@ def get_config_file():
 
 def default_config_values():
     """Master location of all default config values"""
-    config_data = {
+    return {
         "clobber": False,
         "createconfig": False,
         "debug": False,
@@ -453,7 +441,6 @@ def default_config_values():
         "country": "USA",
         "language": "English",
     }
-    return config_data
 
 
 def create_config_file():
@@ -468,25 +455,25 @@ def create_config_file():
         "password=",
         "\n# When searching for matching entries, prefer descriptions",
         "#     in 'language' and info matching 'country'",
-        "language=%s" % def_config["language"],
-        "country=%s" % def_config["country"],
+        f'language={def_config["language"]}',
+        f'country={def_config["country"]}',
         "\n# Save metadata files in .meta subdirectory: True or False",
-        "metadir=%s" % def_config["metadir"],
+        f'metadir={def_config["metadir"]}',
         "\n# How many seconds to wait for a connection to thetvdb.com",
         "timeout=%d" % def_config["timeout"],
         "\n# Generate metadata for all files in sub dirs too: True or False",
-        "recursive=%s" % def_config["recursive"],
+        f'recursive={def_config["recursive"]}',
         "\n# Specify a directory in which to place symlinks to shows, ",
         "#    organized by genre.  Leave blank to disable.",
         "genre=",
         "\n# Force overwrite of existing metadata: True or False",
-        "clobber=%s" % def_config["clobber"],
+        f'clobber={def_config["clobber"]}',
         "\n# Extra debug messages in log file: True or False",
-        "debug=%s" % def_config["debug"],
+        f'debug={def_config["debug"]}',
     ]
     config_filepath = os.path.realpath(os.path.expanduser(CONFIG_FILE_PATH))
 
-    print("Creating default config file: " + CONFIG_FILE_PATH)
+    print(f"Creating default config file: {CONFIG_FILE_PATH}")
     if os.path.isfile(config_filepath):
         print(CONFIG_FILE_PATH)
         print("    Config file exists.  Not writing default config file.")
@@ -504,7 +491,7 @@ def create_config_file():
             for line in config_default_lines:
                 print(line, file=config_fh)
     except IOError:
-        print("Couldn't make config file: " + CONFIG_FILE_PATH)
+        print(f"Couldn't make config file: {CONFIG_FILE_PATH}")
         LOGGER.error("Error writing config file", exc_info=True)
         raise
     os.chmod(config_filepath, stat.S_IRUSR + stat.S_IWUSR)
@@ -560,11 +547,7 @@ def main(argv: List[str]) -> int:
     interactive = check_interactive()
 
     # create/set genre dir if specified and possible
-    if config["genre"]:
-        genre_dir = create_genre_dir(config["genre"])
-    else:
-        genre_dir = None
-
+    genre_dir = create_genre_dir(config["genre"]) if config["genre"] else None
     # get rpc_remote if possible
     rpc_remote = get_rpc(
         username=config.get("username", None), password=config.get("password", None)

@@ -38,15 +38,19 @@ def ask_user(options_text, option_returns, max_options=5):
     num_choices = min(num_choices, max_options)
 
     for i in range(num_choices):
-        option_text = ""
         option_text_lines = options_text[i].splitlines()
-        for line in option_text_lines:
-            option_text += (
+        option_text = "".join(
+            (
                 textwrap.fill(
-                    line, width=75, initial_indent=indent, subsequent_indent=indent
+                    line,
+                    width=75,
+                    initial_indent=indent,
+                    subsequent_indent=indent,
                 )
                 + "\n"
             )
+            for line in option_text_lines
+        )
         option_text = option_text.strip()
         if num_choices < 10:
             print("%d   %s" % (i, option_text))
@@ -71,12 +75,10 @@ def ask_user(options_text, option_returns, max_options=5):
 
     if choice_num is not None:
         print("Option %d chosen." % choice_num)
-        returnval = option_returns[choice_num]
+        return option_returns[choice_num]
     else:
         print("No choice recorded, skipping...")
-        returnval = None
-
-    return returnval
+        return None
 
 
 def mkdir_if_needed(dirname):

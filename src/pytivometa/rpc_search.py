@@ -72,11 +72,11 @@ def debug_fxn(func):
     """
 
     def func_wrapper(*args, **kwargs):
-        log_string = "FXN:" + func.__qualname__ + "(\n"
+        log_string = f"FXN:{func.__qualname__}" + "(\n"
         for arg in args[1:]:
-            log_string += "        " + repr(arg) + ",\n"
+            log_string += f"        {repr(arg)}" + ",\n"
         for key in kwargs:
-            log_string += "        " + key + "=" + repr(kwargs[key]) + ",\n"
+            log_string += f"        {key}={repr(kwargs[key])}" + ",\n"
         log_string += "        )"
         LOGGER.info(log_string)
         return func(*args, **kwargs)
@@ -96,17 +96,17 @@ def debug_fxn_omit(omit_args=None, omit_kwargs=None):
 
     def debug_fxn_int(func):
         def func_wrapper(*args, **kwargs):
-            log_string = "FXN:" + func.__qualname__ + "(\n"
+            log_string = f"FXN:{func.__qualname__}" + "(\n"
             for (i, arg) in enumerate(args[1:]):
                 if i not in omit_args:
-                    log_string += "        " + repr(arg) + ",\n"
+                    log_string += f"        {repr(arg)}" + ",\n"
                 else:
                     log_string += "        " + "*** REDACTED ***" + ",\n"
             for key in kwargs:
                 if key not in omit_kwargs:
-                    log_string += "        " + key + "=" + repr(kwargs[key]) + ",\n"
+                    log_string += f"        {key}={repr(kwargs[key])}" + ",\n"
                 else:
-                    log_string += "        " + key + "=" + "*** REDACTED ***" + ",\n"
+                    log_string += f"        {key}=*** REDACTED ***" + ",\n"
             log_string += "        )"
             LOGGER.info(log_string)
             return func(*args, **kwargs)
@@ -219,11 +219,7 @@ class Remote(object):
         Returns:
             str: actual json-formatted request with headers, body, etc.
         """
-        if "bodyId" in kwargs:
-            body_id = kwargs["bodyId"]
-        else:
-            body_id = ""
-
+        body_id = kwargs.get("bodyId", "")
         headers = (
             "\r\n".join(
                 (
@@ -231,9 +227,9 @@ class Remote(object):
                     "RpcId: %d" % self._get_rpc_id(),
                     "SchemaVersion: 14",
                     "Content-Type: application/json",
-                    "RequestType: %s" % req_type,
-                    "ResponseCount: %s" % (monitor and "multiple" or "single"),
-                    "BodyId: %s" % body_id,
+                    f"RequestType: {req_type}",
+                    f'ResponseCount: {monitor and "multiple" or "single"}',
+                    f"BodyId: {body_id}",
                     "X-ApplicationName: Quicksilver",
                     "X-ApplicationVersion: 1.2",
                     "X-ApplicationSessionId: 0x%x" % self.session_id,
@@ -243,7 +239,7 @@ class Remote(object):
         )
 
         req_obj = dict(**kwargs)
-        req_obj.update({"type": req_type})
+        req_obj["type"] = req_type
 
         body = json.dumps(req_obj) + "\n"
 
@@ -267,11 +263,12 @@ class Remote(object):
 
         while True:
             buf_raw += self.ssl_socket.read(16)
-            match = re.match(r"MRPC/2 (\d+) (\d+)\r\n", buf_raw.decode("utf-8"))
-            if match:
-                start_line = match.group(0)
-                head_len = int(match.group(1))
-                body_len = int(match.group(2))
+            if match := re.match(
+                r"MRPC/2 (\d+) (\d+)\r\n", buf_raw.decode("utf-8")
+            ):
+                start_line = match[0]
+                head_len = int(match[1])
+                body_len = int(match[2])
                 break
 
         need_len = len(start_line) + head_len + body_len
@@ -282,7 +279,7 @@ class Remote(object):
         # LOGGER.debug('READ %s', buf)
         head_val = buf[: -1 * body_len].decode("utf-8")
         LOGGER.debug("header: %s", head_val)
-        rpc_id = int(re.search(r"RpcId: (\d+)\r\n", head_val).group(1))
+        rpc_id = int(re.search(r"RpcId: (\d+)\r\n", head_val)[1])
         LOGGER.debug("rpc_id: %d", rpc_id)
 
         returnval = json.loads(buf[-1 * body_len :].decode("utf-8"))
@@ -405,8 +402,7 @@ class Remote(object):
         """
         req = self._rpc_request(req_type, **kwargs)
         self._write(req)
-        result = self._read()
-        return result
+        return self._read()
 
     @debug_fxn
     def search_series(self, title_keywords):
@@ -643,20 +639,20 @@ class Remote(object):
         Raises:
             MindTimeoutError: if mind returns 'code':'mindUnavailable'
         """
-        resp_template = [
-            {
-                "type": "responseTemplate",
-                "fieldName": ["content"],
-                "typeName": "contentList",
-            },
-            {
-                "type": "responseTemplate",
-                "fieldName": ["partnerContentId"],
-                "typeName": "content",
-            },
-        ]
         if season_num is not None and episode_num is not None:
             LOGGER.debug("rpc: season episode")
+            resp_template = [
+                {
+                    "type": "responseTemplate",
+                    "fieldName": ["content"],
+                    "typeName": "contentList",
+                },
+                {
+                    "type": "responseTemplate",
+                    "fieldName": ["partnerContentId"],
+                    "typeName": "content",
+                },
+            ]
             results = self.rpc_req_generic(
                 "contentSearch",
                 collectionId=collection_id,
@@ -665,24 +661,22 @@ class Remote(object):
                 count=1,
                 responseTemplate=resp_template,
             )
-            if "content" in results:
-                program_id = results["content"][0]["partnerContentId"]
-            else:
-                program_id = None
-
+            return (
+                results["content"][0]["partnerContentId"]
+                if "content" in results
+                else None
+            )
         elif year is not None and month is not None and day is not None:
             LOGGER.debug("rpc: year month day")
             # search through all episodes, looking for air_date match
             result = self.get_program_id_airdate(
                 collection_id, year=year, month=month, day=day
             )
-            program_id = result.get("partnerContentId", None)
+            return result.get("partnerContentId", None)
         else:
             # TODO: real error handling
             print("Error, not enough info to find specific episode")
-            program_id = None
-
-        return program_id
+            return None
 
     @debug_fxn
     def get_program_id_airdate(self, collection_id, year=None, month=None, day=None):
@@ -998,6 +992,6 @@ class Remote(object):
 
         content = results["content"][0]
         for key in sorted(content):
-            LOGGER.debug(key + ": " + str(content[key]))
+            LOGGER.debug(f"{key}: {str(content[key])}")
 
         return content

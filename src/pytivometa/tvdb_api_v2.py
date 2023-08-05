@@ -133,11 +133,11 @@ def debug_fxn(func):
     """
 
     def func_wrapper(*args, **kwargs):
-        log_string = "FXN:" + func.__qualname__ + "(\n"
+        log_string = f"FXN:{func.__qualname__}" + "(\n"
         for arg in args[1:]:
-            log_string += "        " + repr(arg) + ",\n"
+            log_string += f"        {repr(arg)}" + ",\n"
         for key in kwargs:
-            log_string += "        " + key + "=" + repr(kwargs[key]) + ",\n"
+            log_string += f"        {key}={repr(kwargs[key])}" + ",\n"
         log_string += "        )"
         LOGGER.info(log_string)
         return func(*args, **kwargs)
@@ -154,7 +154,7 @@ def get_session_token():
         str: TVDB session token, used for all future requests in http header
     """
     # execute POST: send apikey, receive session token
-    tvdb_api_login_url = TVDB_API_URL + "login"
+    tvdb_api_login_url = f"{TVDB_API_URL}login"
     post_fields = {"apikey": TVDB_APIKEY}
     headers = {"Content-type": "application/json", "Accept": "application/json"}
 
@@ -174,9 +174,7 @@ def get_session_token():
 
     json_reply = json_reply_raw.read().decode()
     json_data = json.loads(json_reply)
-    tvdb_sess_token = json_data["token"]
-
-    return tvdb_sess_token
+    return json_data["token"]
 
 
 class Tvdb:
@@ -192,11 +190,11 @@ class Tvdb:
             url (str): full URL to access
         """
         headers = {
-            "Authorization": "Bearer " + self.session_token,
+            "Authorization": f"Bearer {self.session_token}",
             "Accept": "application/json",
         }
         if headers_extra is not None:
-            headers.update(headers_extra)
+            headers |= headers_extra
 
         request = urllib.request.Request(url, headers=headers)
 
@@ -206,14 +204,12 @@ class Tvdb:
             # accidentally putting a real space into URL:
             #   HTTP Error 400: Bad request
             print(http_error)
-            print("url: " + url)
+            print(f"url: {url}")
             # TODO: do something better than re-raise
             raise
 
         json_reply = json_reply_raw.read().decode()
-        json_data = json.loads(json_reply)
-
-        return json_data
+        return json.loads(json_reply)
 
     @debug_fxn
     def search_series(self, search_string):
@@ -243,7 +239,7 @@ class Tvdb:
             ]
         """
         search_string = urllib.parse.quote(search_string)
-        tvdb_search_series_url = TVDB_API_URL + "search/series?name=" + search_string
+        tvdb_search_series_url = f"{TVDB_API_URL}search/series?name={search_string}"
 
         json_data = self._tvdb_get(tvdb_search_series_url)
 
@@ -297,12 +293,12 @@ class Tvdb:
                 'siteRating': 8.8, 'siteRatingCount': 9}
         """
         # TODO: can use /series/{id}/filter to get only desired tags
-        tvdb_series_info_url = TVDB_API_URL + "series/" + tvdb_series_id
+        tvdb_series_info_url = f"{TVDB_API_URL}series/{tvdb_series_id}"
 
         json_data = self._tvdb_get(tvdb_series_info_url)
         series_info = json_data["data"]
 
-        json_data_actors = self._tvdb_get(tvdb_series_info_url + "/actors")
+        json_data_actors = self._tvdb_get(f"{tvdb_series_info_url}/actors")
         # http.client.BadStatusLine: <html>
         #   when I accidentally erroneously gave <cr> in tvdb_series_id
         series_info_actors = json_data_actors["data"]
@@ -311,7 +307,7 @@ class Tvdb:
         def sortorder_then_lastname(item):
             last_name_re = re.search(r"\s(\S+)$", item["name"])
             if last_name_re:
-                return "%02d%s" % (item["sortOrder"], last_name_re.group(1))
+                return "%02d%s" % (item["sortOrder"], last_name_re[1])
 
             return "%02d" % item["sortOrder"]
 
@@ -341,15 +337,7 @@ class Tvdb:
                 tvdb_series_id, year, month, day
             )
 
-        get_episode_id_url = (
-            TVDB_API_URL
-            + "series/"
-            + tvdb_series_id
-            + "/episodes/query?airedSeason="
-            + season
-            + "&airedEpisode="
-            + episode
-        )
+        get_episode_id_url = f"{TVDB_API_URL}series/{tvdb_series_id}/episodes/query?airedSeason={season}&airedEpisode={episode}"
         json_data = self._tvdb_get(get_episode_id_url)
         episode_list_info = json_data["data"]
 
@@ -357,10 +345,9 @@ class Tvdb:
 
         episode_id = str(episode_list_info[0]["id"])
 
-        get_episode_info_url = TVDB_API_URL + "episodes/" + episode_id
+        get_episode_info_url = f"{TVDB_API_URL}episodes/{episode_id}"
         json_data = self._tvdb_get(get_episode_info_url)
-        episode_info = json_data["data"]
-        return episode_info
+        return json_data["data"]
 
     @debug_fxn
     def get_season_ep_from_airdate(self, tvdb_series_id, year, month, day):
@@ -372,7 +359,7 @@ class Tvdb:
         LOGGER.debug("searching for episode date %d", search_date_num)
 
         # need to get all pages in /series/{id}/episodes to find air date
-        get_episodes_url = TVDB_API_URL + "series/" + tvdb_series_id + "/episodes?page="
+        get_episodes_url = f"{TVDB_API_URL}series/{tvdb_series_id}/episodes?page="
 
         page = 1
         done = False
@@ -401,13 +388,12 @@ class Tvdb:
                     # NOTE: currently episode list seems to be sorted odd!
                     #   All seasons' episode 1, then all seasons' episode 2, ...
                     if episode_info["firstAired"]:
-                        ep_date_re = re.search(
+                        if ep_date_re := re.search(
                             r"(\d+)-(\d+)-(\d+)", episode_info["firstAired"]
-                        )
-                        if ep_date_re:
-                            year = ep_date_re.group(1)
-                            month = ep_date_re.group(2)
-                            day = ep_date_re.group(3)
+                        ):
+                            year = ep_date_re[1]
+                            month = ep_date_re[2]
+                            day = ep_date_re[3]
                             ep_date_num = int(
                                 "%04d%02d%02d" % (int(year), int(month), int(day))
                             )

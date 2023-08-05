@@ -86,9 +86,8 @@ def extract_tags(title):
     }
     # fmt: on
     for tag in list(taglist.keys()):
-        match = re.search(tag, title)
-        if match:
-            tags += match.expand(taglist[tag]) + " "
+        if match := re.search(tag, title):
+            tags += f"{match.expand(taglist[tag])} "
             title = re.sub(tag, "", title)
     LOGGER.debug("2,    Tags: %s", tags)
     return (tags, title)
@@ -107,23 +106,23 @@ def fix_spaces(title):
 
 def mk_link(link_name, file_path):
     target = os.path.relpath(file_path, os.path.dirname(link_name))
-    LOGGER.debug("2,Linking " + link_name + " -> " + target)
+    LOGGER.debug(f"2,Linking {link_name} -> {target}")
     if os.path.islink(link_name):
         os.unlink(link_name)
         os.symlink(target, link_name)
     elif os.path.exists(link_name):
         print(
-            "Unable to create link '" + link_name + "', a file already "
-            "exists with that name."
+            (
+                f"Unable to create link '{link_name}" + "', a file already "
+                "exists with that name."
+            )
         )
     else:
         os.symlink(target, link_name)
 
 
 def report_match(movie_info, num_results):
-    matchtype = "Using best match: "
-    if num_results == 1:
-        matchtype = "Found exact match: "
+    matchtype = "Found exact match: " if num_results == 1 else "Using best match: "
     if "long imdb title" in list(movie_info.keys()):
         LOGGER.debug(matchtype + movie_info["long imdb title"])
     else:
@@ -133,25 +132,21 @@ def report_match(movie_info, num_results):
 def title_from_filename(filename):
     title = os.path.splitext(filename)[0]
 
-    # Most tags and group names come after the year (which is often in parens
-    #   or brackets)
-    # Using the year when searching IMDb will help, so try to find it.
-    year_match1 = re.match(
-        r"(.*?\w+.*?)(?:([\[(])|(\W))(.*?)((?:19|20)\d\d)(?(2)[])]|(\3|$))(.*?)$", title
-    )
-    if year_match1:
+    if year_match1 := re.match(
+        r"(.*?\w+.*?)(?:([\[(])|(\W))(.*?)((?:19|20)\d\d)(?(2)[])]|(\3|$))(.*?)$",
+        title,
+    ):
         (tags, _) = extract_tags(title)
         (title, year, _, _) = year_match1.group(1, 5, 4, 7)
         LOGGER.debug("2,    Title: %s\n    Year: %s", title, year)
-        title += " (" + year + ")"
+        title += f" ({year})"
     else:
-        # 2nd pass at finding the year.  Look for a series of tags in parens
-        #   which may include the year.
-        year_match2 = re.match(r"(.*?\w+.*?)\(.*((?:19|20)\d\d)\).*\)", title)
-        if year_match2:
-            (title, year) = year_match2.group([1, 2])
+        if year_match2 := re.match(
+            r"(.*?\w+.*?)\(.*((?:19|20)\d\d)\).*\)", title
+        ):
+            (title, year) = year_match2[[1, 2]]
             LOGGER.debug("2,    Title: %s\n    Year: %s", title, year)
-            title += " (" + year + ")"
+            title += f" ({year})"
         else:
             LOGGER.debug("2,Cleaning up title the hard way.")
             title = clean_title(title)
@@ -251,20 +246,18 @@ class MovieData:
             # Do the search, and get the results (a list of Movie objects).
             results = imdb_access.search_movie(title)
         except imdb.IMDbError as error:
-            print("IMDb lookup error: " + str(error))
+            print(f"IMDb lookup error: {str(error)}")
             # TODO: raise Exception
             sys.exit(3)
 
         if not results:
-            print(title + ": No IMDB matches found.")
+            print(f"{title}: No IMDB matches found.")
             return None
 
         if len(results) > 1 and self.interactive:
             print("\nMatches for movie title '%s'" % title)
             print("------------------------------------")
-            options_text = []
-            for result in results:
-                options_text.append(result["long imdb title"])
+            options_text = [result["long imdb title"] for result in results]
             imdb_movie_info = pytivometa.common.ask_user(
                 options_text, results, max_options=5
             )
@@ -305,7 +298,7 @@ class MovieData:
 
             # DEBUG DELETEME
             for key in sorted(rpc_info):
-                LOGGER.debug(key + ": " + str(rpc_info[key]))
+                LOGGER.debug(f"{key}: {str(rpc_info[key])}")
 
         if imdb_movie_info is not None:
             # So far the imdb_movie_info object only contains basic information like the
@@ -315,8 +308,7 @@ class MovieData:
                 # LOGGER.debug("3," + imdb_movie_info.summary())
             except Exception:
                 print(
-                    "Warning: unable to get extended details from "
-                    "IMDb for: " + str(imdb_movie_info)
+                    f"Warning: unable to get extended details from IMDb for: {str(imdb_movie_info)}"
                 )
                 print("         You may need to update your imdbpy module.")
 
@@ -327,14 +319,13 @@ class MovieData:
                 except Exception:
                     LOGGER.debug("Warning: unable to get release date.")
 
-            # copy selected keys from imdb_movie_info object into real dict
-            movie_info = {}
-            for key in imdb_info_to_fetch:
-                if key in imdb_movie_info:
-                    movie_info[key] = imdb_movie_info[key]
-
+            movie_info = {
+                key: imdb_movie_info[key]
+                for key in imdb_info_to_fetch
+                if key in imdb_movie_info
+            }
             # add RPC info to movie info
-            movie_info.update(rpc_movie_info)
+            movie_info |= rpc_movie_info
         else:
             movie_info = None
 
@@ -444,7 +435,7 @@ class MovieData:
             line += "..." if len(movie_info["plot outline"]) > 200 else ""
         # IMDB score if available
         if "rating" in list(movie_info.keys()):
-            line += " IMDB: %s/10" % movie_info["rating"]
+            line += f' IMDB: {movie_info["rating"]}/10'
         line += "\n"
 
         # isEpisode always false for movies
